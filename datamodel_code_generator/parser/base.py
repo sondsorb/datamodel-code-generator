@@ -119,24 +119,42 @@ def sort_data_models(
     sorted_model_count: int = len(sorted_data_models)
 
     unresolved_references: List[DataModel] = []
-    for model in unsorted_data_models:
-        if not model.reference_classes:
+    for model in unsorted_data_models: # add models with no unresolved references. (i.e. remove all leaf nodes from the reference tree)
+
+        # WORKAOUND:
+        # make refs, which is like reference_classes but with absolute https references.
+        # then exchange model.reference_classes with refs below, since model.reference_classes is not changable
+        refs = list(model.reference_classes)
+        for i, ref in enumerate(refs):
+            if model.path.startswith("https://") and type(ref) == str and ref.startswith("./"):
+                base = model.path.split("#")[0]
+                base = base.split("/")
+                base = "/".join(base[:-1])
+                full_ref = base+"/"+ref[2:] # remove ./ from ref
+                refs[i] = full_ref
+        refs = frozenset(refs)
+
+        #if not model.reference_classes:
+        if not refs:
             sorted_data_models[model.path] = model
         elif (
-            model.path in model.reference_classes and len(model.reference_classes) == 1
+            #model.path in model.reference_classes and len(model.reference_classes) == 1
+            model.path in refs and len(refs) == 1
         ):  # only self-referencing
             sorted_data_models[model.path] = model
             require_update_action_models.append(model.path)
         elif (
-            not model.reference_classes - {model.path} - set(sorted_data_models)
+            #not model.reference_classes - {model.path} - set(sorted_data_models)
+            not refs - {model.path} - set(sorted_data_models)
         ):  # reference classes have been resolved
             sorted_data_models[model.path] = model
-            if model.path in model.reference_classes:
+            #if model.path in model.reference_classes:
+            if model.path in refs:
                 require_update_action_models.append(model.path)
         else:
             unresolved_references.append(model)
     if unresolved_references:
-        if sorted_model_count != len(sorted_data_models) and recursion_count:
+        if sorted_model_count != len(sorted_data_models) and recursion_count: # == means nothing has been added to sorted this round => no progress in further recursion. I guess this must mean sircular referencing?
             try:
                 return sort_data_models(
                     unresolved_references,

@@ -1585,8 +1585,18 @@ class JsonSchemaParser(Parser):
         return reference
 
     def parse_ref(self, obj: JsonSchemaObject, path: List[str]) -> None:
-        if obj.ref:
-            self.resolve_ref(obj.ref)
+
+        # workaround : change from relative to abolute path for https urls + relative path.
+        if path[0].startswith("https://") and type(obj.ref) == str and obj.ref.startswith("./"):
+            base = path[0].split("#")[0]
+            base = base.split("/")
+            base = "/".join(base[:-1])
+            full_ref = base+"/"+obj.ref[2:] # remove ./ from ref
+            self.resolve_ref(full_ref)
+        else:
+            if obj.ref:
+                self.resolve_ref(obj.ref)
+        #print("parse_ref resolved)\n")
         if obj.items:
             if isinstance(obj.items, JsonSchemaObject):
                 self.parse_ref(obj.items, path)
