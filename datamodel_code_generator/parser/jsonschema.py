@@ -1526,6 +1526,7 @@ class JsonSchemaParser(Parser):
         return self.data_type(reference=reference)
 
     def _get_ref_body(self, resolved_ref: str) -> Dict[Any, Any]:
+        print("get_ref_body;", resolved_ref)
         if is_url(resolved_ref):
             return self._get_ref_body_from_url(resolved_ref)
         return self._get_ref_body_from_remote(resolved_ref)
@@ -1540,6 +1541,7 @@ class JsonSchemaParser(Parser):
         # Remote Reference – $ref: 'document.json' Uses the whole document located on the same server and in
         # the same location. TODO treat edge case
         full_path = self.base_path / resolved_ref
+        print("get_ref_body_from_remote;", full_path)
 
         return self.remote_object_cache.get_or_put(
             str(full_path),
@@ -1553,6 +1555,7 @@ class JsonSchemaParser(Parser):
 
         # https://swagger.io/docs/specification/using-ref/
         ref = self.model_resolver.resolve_ref(object_ref)
+        print("resolve_ref:", object_ref, ref)
         if get_ref_type(object_ref) == JSONReference.LOCAL:
             # Local Reference – $ref: '#/definitions/myElement'
             self.reserved_refs[tuple(self.model_resolver.current_root)].add(ref)  # type: ignore
@@ -1572,9 +1575,11 @@ class JsonSchemaParser(Parser):
                 relative_path, object_path = ref.split('#')
             relative_paths = relative_path.split('/')
             base_path = Path(*relative_paths).parent
+        print("resove_ref relative path:", relative_path, base_path)
         with self.model_resolver.current_base_path_context(
             base_path
         ), self.model_resolver.base_url_context(relative_path):
+            print("   base path now:", self.base_path)
             self._parse_file(
                 self._get_ref_body(relative_path),
                 self.model_resolver.add_ref(ref, resolved=True).name,
@@ -1585,8 +1590,29 @@ class JsonSchemaParser(Parser):
         return reference
 
     def parse_ref(self, obj: JsonSchemaObject, path: List[str]) -> None:
-        if obj.ref:
-            self.resolve_ref(obj.ref)
+        #print("parse_ref:",path, obj.ref)
+        #print("testing: ", path[0].startswith=="https://", type(obj.ref) == str and obj.ref.startswith("./"))
+        if path[0].startswith("https://") and type(obj.ref) == str and obj.ref.startswith("./"):
+            #print("parse_ref ???????:",path, obj.ref)
+            #1/0
+            #old_base = self.base_path
+            #print(type(old_base))
+            base = path[0].split("#")[0]
+            base = base.split("/")
+            base = "/".join(base[:-1])
+            full_ref = base+"/"+obj.ref[2:] # remove ./ from ref
+            print("##### changed ref with full ref:", obj.ref, full_ref)
+            self.resolve_ref(full_ref) 
+            ##base = Path(base).parent
+            #self.base_path = base
+            #print("base now; ", self.base_path)
+            #if obj.ref:
+            #    self.resolve_ref(obj.ref)
+            #self.base_path = old_base
+        else:
+            if obj.ref:
+                self.resolve_ref(obj.ref)
+        #print("parse_ref resolved)\n")
         if obj.items:
             if isinstance(obj.items, JsonSchemaObject):
                 self.parse_ref(obj.items, path)
@@ -1656,6 +1682,22 @@ class JsonSchemaParser(Parser):
         obj: JsonSchemaObject,
         path: List[str],
     ) -> None:
+
+
+        
+        print("### --in parse_obj-- ## considering changing")
+        if path[0].startswith("https://") and type(obj.ref) == str and obj.ref.startswith("./"):
+            #old_base = self.base_path
+            #print(type(old_base))
+            base = path[0].split("#")[0]
+            base = base.split("/")
+            base = "/".join(base[:-1])
+            full_ref = base+"/"+obj.ref[2:] # remove ./ from ref
+            print("### --in parse_obj-- ## changed ref...", obj.ref)
+            obj.ref = full_ref
+            print("### --in parse_obj-- ## with full ref:", obj.ref)
+
+
         if obj.is_array:
             self.parse_array(name, obj, path)
         elif obj.allOf:
@@ -1674,6 +1716,8 @@ class JsonSchemaParser(Parser):
             self.parse_enum(name, obj, path)
         else:
             self.parse_root_type(name, obj, path)
+
+        print("### --in parse_obj-- ## ----final val:", obj.ref)
         self.parse_ref(obj, path)
 
     def _get_context_source_path_parts(self) -> Iterator[Tuple[Source, List[str]]]:
